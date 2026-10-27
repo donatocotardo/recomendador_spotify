@@ -6,6 +6,7 @@ import requests
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from dotenv import load_dotenv
+from datetime import datetime
 
 load_dotenv()
 API_KEY = os.getenv("LASTFM_API_KEY")
@@ -70,7 +71,7 @@ print(f"\n{len(uris)} canciones encontradas")
 # Crear la playlist privada
 usuario = sp.current_user()["id"]
 playlist = sp._post("me/playlists", payload={
-    "name": "Recomendador v1",
+    "name": f"Recomendaciones {time.strftime('%Y-%m-%d')}",
     "public": False,
     "description": "Generada por mi recomendador en Python",
 })
