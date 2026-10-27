@@ -6,6 +6,12 @@ import time
 from dotenv import load_dotenv
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+import unicodedata, re
+
+def norm(s):
+    s = unicodedata.normalize("NFKD", str(s)).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]", "", s)
+
 
 load_dotenv()
 API_KEY = os.getenv("LASTFM_API_KEY")
@@ -36,7 +42,8 @@ mis_artistas = set(pesos)
 def doc_artista(df):
     palabras = []
     for _, f in df.iterrows():
-        tag = f["tag"].replace(" ", "_").replace("-", "_")
+        tag = norm(f["tag"])
+        tag = tag.replace(" ", "_").replace("-", "_")
         palabras += [tag] * max(1, int(f["peso"] // 10))
     return " ".join(palabras)
 
