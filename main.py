@@ -5,7 +5,8 @@ import time
 
 PASOS = {
     "descargar": "descargar_datos.py",
-    "enriquecer": "enriquecer_lastfm.py",
+    "enriquecer": "lastfm.py",
+    "genero": "elegir_genero.py",
     "recomendar": "recomendar.py",
     "revisar": "revisar_artistas.py",
     "playlist": "crear_playlist.py",

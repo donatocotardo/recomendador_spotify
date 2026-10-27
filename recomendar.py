@@ -1,5 +1,7 @@
+import json
 import os
 import re
+import sys
 import time
 import unicodedata
 
@@ -14,14 +16,29 @@ API_KEY = os.getenv("LASTFM_API_KEY")
 URL = "https://ws.audioscrobbler.com/2.0/"
 
 EXCLUIR = {"dreamville"}
-N_CANDIDATOS = 150
-PESO_VECINOS = 0.6
-PESO_CONTENIDO = 0.4
+N_POR_TAG = 40
+N_CANDIDATOS_MAX = 220
+UMBRAL_TAG = 10
+ALIAS = {"rnb": {"rnb", "rb"}, "hiphop": {"hiphop", "rap"}}
+IDIOMA_ES = {"spanish", "espanol", "espana", "spain", "latin", "argentin", "mexic",
+             "chile", "colombia", "puertorico", "galiza"}
 
 
 def norm(s):
     s = unicodedata.normalize("NFKD", str(s)).encode("ascii", "ignore").decode().lower()
     return re.sub(r"[^a-z0-9]", "", s)
+
+
+def lastfm(metodo, **params):
+    try:
+        r = requests.get(URL, params={"method": metodo, "api_key": API_KEY,
+                                      "format": "json", "autocorrect": 1, **params},
+                         timeout=10).json()
+        return None if "error" in r else r
+    except Exception:
+        return None
+    finally:
+        time.sleep(0.25)
 
 
 def doc_desde_tags(pares):
@@ -32,6 +49,18 @@ def doc_desde_tags(pares):
             palabras += [t] * max(1, int(peso) // 10)
     return " ".join(palabras)
 
+
+filtro = {"generos": [], "espanol": False}
+if os.path.exists("data/filtro.json"):
+    with open("data/filtro.json", encoding="utf-8") as f:
+        filtro.update(json.load(f))
+generos = filtro["generos"]
+generos_norm = [norm(g) for g in generos]
+hay_filtro = bool(generos) or filtro["espanol"]
+
+if os.path.exists("data/feedback.csv"):
+    fb = pd.read_csv("data/feedback.csv")
+    EXCLUIR |= {norm(a) for a in fb.loc[fb["decision"] == "no", "artista"]}
 
 tags = pd.read_csv("data/artistas_tags.csv").dropna(subset=["tag"])
 sim = pd.read_csv("data/artistas_similares.csv")
@@ -62,51 +91,76 @@ for artista, p in pesos.items():
         perfil += matriz[indice[artista]].toarray().ravel() * p
 perfil = perfil / np.linalg.norm(perfil)
 
-if os.path.exists("data/feedback.csv"):
-    fb = pd.read_csv("data/feedback.csv")
-    EXCLUIR |= {norm(a) for a in fb.loc[fb["decision"] == "no", "artista"]}
-
-mis_norm = {norm(a) for a in mis_artistas} | EXCLUIR
-cand = sim[~sim["similar"].map(norm).isin(mis_norm)].copy()
-
+excluidos = {norm(a) for a in mis_artistas} | EXCLUIR
+cand = sim[~sim["similar"].map(norm).isin(excluidos)].copy()
 cand["aporte"] = cand["match"] * cand["artista"].map(pesos).fillna(0)
 vecinos = cand.groupby("similar")["aporte"].sum()
 vecinos = vecinos / vecinos.max()
 
-top_cand = vecinos.sort_values(ascending=False).head(N_CANDIDATOS).index.tolist()
+n_vecinos = 80 if hay_filtro else 150
+pool = vecinos.sort_values(ascending=False).head(n_vecinos).index.tolist()
+
+if hay_filtro:
+    if generos:
+        consultas = []
+        for g in generos:
+            consultas += [f"spanish {g}", f"{g} en espanol"] if filtro["espanol"] else [g]
+    else:
+        consultas = ["spanish"]
+    vistos = {norm(a) for a in pool}
+    for q in consultas:
+        print(f"Buscando artistas del tag '{q}'")
+        r = lastfm("tag.getTopArtists", tag=q, limit=N_POR_TAG)
+        if not r or "topartists" not in r:
+            continue
+        for a in r["topartists"].get("artist", []):
+            nombre = a["name"]
+            if norm(nombre) not in excluidos and norm(nombre) not in vistos:
+                pool.append(nombre)
+                vistos.add(norm(nombre))
+    pool = pool[:N_CANDIDATOS_MAX]
+
 tags_cand = {}
-for i, artista in enumerate(top_cand, 1):
-    print(f"[{i}/{len(top_cand)}] {artista}")
-    try:
-        r = requests.get(URL, params={
-            "method": "artist.getTopTags",
-            "artist": artista,
-            "api_key": API_KEY,
-            "format": "json",
-            "autocorrect": 1,
-        }, timeout=10).json()
+for i, artista in enumerate(pool, 1):
+    print(f"[{i}/{len(pool)}] {artista}")
+    r = lastfm("artist.getTopTags", artist=artista)
+    if r and "toptags" in r:
         tags_cand[artista] = [(t["name"], int(t["count"])) for t in r["toptags"]["tag"][:15]]
-    except Exception:
-        pass
-    time.sleep(0.25)
+
+
+def cumple_filtro(pares):
+    nt = [norm(t) for t, p in pares if p >= UMBRAL_TAG]
+    for g in generos_norm:
+        if not any(o in t for o in ALIAS.get(g, {g}) for t in nt):
+            return False
+    if filtro["espanol"] and not any(o in t for o in IDIOMA_ES for t in nt):
+        return False
+    return True
+
 
 filas = []
-for artista in top_cand:
+for artista in pool:
     if artista not in tags_cand:
+        continue
+    if hay_filtro and not cumple_filtro(tags_cand[artista]):
         continue
     v = vec.transform([doc_desde_tags(tags_cand[artista])]).toarray().ravel()
     norma = np.linalg.norm(v)
-    if norma == 0:
-        continue
+    contenido = float(v @ perfil / norma) if norma > 0 else 0.0
     filas.append({
         "artista": artista,
-        "vecinos": vecinos[artista],
-        "contenido": float(v @ perfil / norma),
+        "vecinos": float(vecinos.get(artista, 0.0)),
+        "contenido": contenido,
         "tags": ", ".join(t for t, _ in tags_cand[artista][:4]),
     })
 
+if not filas:
+    print("\nNingún artista cumple el filtro. Prueba con menos géneros o sin 'Solo en español'.")
+    sys.exit(1)
+
+peso_vecinos, peso_contenido = (0.3, 0.7) if hay_filtro else (0.6, 0.4)
 res = pd.DataFrame(filas)
-res["score"] = PESO_VECINOS * res["vecinos"] + PESO_CONTENIDO * res["contenido"]
+res["score"] = peso_vecinos * res["vecinos"] + peso_contenido * res["contenido"]
 res = res.sort_values("score", ascending=False)
 
 print("\nTop 25 artistas recomendados:\n")
