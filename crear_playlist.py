@@ -24,7 +24,13 @@ sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
     scope="playlist-modify-private user-library-read"
 ))
 
-recs = pd.read_csv("data/recomendaciones_artistas.csv").head(N_ARTISTAS)
+recs = pd.read_csv("data/recomendaciones_artistas.csv")
+if os.path.exists("data/feedback.csv"):
+    fb = pd.read_csv("data/feedback.csv")
+    rechazados = set(fb.loc[fb["decision"] == "no", "artista"])
+    recs = recs[~recs["artista"].isin(rechazados)]
+recs = recs.head(N_ARTISTAS)
+
 guardadas_ids = set(pd.read_csv("data/guardadas.csv")["track_id"])
 
 uris = []

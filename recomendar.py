@@ -62,6 +62,10 @@ for artista, p in pesos.items():
         perfil += matriz[indice[artista]].toarray().ravel() * p
 perfil = perfil / np.linalg.norm(perfil)
 
+if os.path.exists("data/feedback.csv"):
+    fb = pd.read_csv("data/feedback.csv")
+    EXCLUIR |= {norm(a) for a in fb.loc[fb["decision"] == "no", "artista"]}
+
 mis_norm = {norm(a) for a in mis_artistas} | EXCLUIR
 cand = sim[~sim["similar"].map(norm).isin(mis_norm)].copy()
 
@@ -98,6 +102,7 @@ for artista in top_cand:
         "artista": artista,
         "vecinos": vecinos[artista],
         "contenido": float(v @ perfil / norma),
+        "tags": ", ".join(t for t, _ in tags_cand[artista][:4]),
     })
 
 res = pd.DataFrame(filas)
