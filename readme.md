@@ -27,6 +27,8 @@ La ventana muestra la portada, el título, el artista, las etiquetas, la lista d
 - **De tus artistas (sin escuchar hace poco):** artistas de tu biblioteca que no aparecen en tus escuchas recientes ni en tu top de las últimas 4 semanas, y álbumes de los que no tienes canciones guardadas.
 - **De artistas nuevos para ti:** artistas del último `recomendaciones_artistas.csv`, sin los que descartaste con ✕. Necesita haber ejecutado antes el flujo de playlist (o `python main.py --solo genero recomendar`).
 
+Antes de recomendar el álbum puedes elegir uno o varios géneros, igual que en el flujo de playlists. El filtro se aplica a las etiquetas del álbum en Last.fm; también puedes elegir "Solo en español" o "Sin filtro".
+
 Botones de la ventana:
 
 | Botón | Qué hace |
@@ -94,7 +96,7 @@ recomendador-spotify/
 | `recomendar.py` | Calcula tu perfil, genera candidatos, aplica el filtro de género y puntúa. Excluye tus artistas y los que descartaste. | `recomendaciones_artistas.csv` |
 | `revisar_artistas.py` | Ventana con tarjetas de artistas. Con ✕ descartas los que no quieres; los demás entran en la playlist. Incluye botón para escucharlos en Spotify. | `feedback.csv` |
 | `crear_playlist.py` | Busca en Last.fm las canciones top de cada artista, las localiza en Spotify, quita las que ya tienes guardadas y crea la playlist privada. | Playlist en tu cuenta |
-| `recomendar_album.py` | **Nuevo.** Ventana que recomienda un álbum con portada, lista de canciones y motivo. Dos modos: artistas de tu biblioteca que llevas tiempo sin escuchar (sin canciones guardadas de ese álbum) o artistas nuevos recomendados. Botón para abrir el álbum en Spotify. | `albumes_vistos.csv` |
+| `recomendar_album.py` | **Nuevo.** Ventana que recomienda un álbum con portada, lista de canciones y motivo. Aplica el género elegido a las etiquetas de Last.fm. Dos modos: artistas de tu biblioteca que llevas tiempo sin escuchar (sin canciones guardadas de ese álbum) o artistas nuevos recomendados. Botón para abrir el álbum en Spotify. | `albumes_vistos.csv` |
 
 ## Requisitos
 
@@ -176,7 +178,7 @@ python main.py
 Se abre un menú con dos opciones:
 
 - **Crear una playlist con artistas recomendados:** elige género, descarta artistas y se crea la playlist en tu Spotify. Ejecuta: `descargar`, `enriquecer`, `genero`, `recomendar`, `revisar`, `playlist`.
-- **Recomiéndame un álbum:** abre la ventana de álbumes. Ejecuta: `descargar` y `album`.
+- **Recomiéndame un álbum:** elige género y abre la ventana de álbumes. Ejecuta: `descargar`, `genero` y `album`.
 
 Debajo de las opciones hay una casilla **"Actualizar mis datos antes"**. Viene marcada la primera vez (cuando aún no existe `data/guardadas.csv`) y desmarcada después. Si la desmarcas, se saltan los pasos de descarga y de Last.fm. En el modo álbum solo se refrescan tus escuchas, porque es lo que decide qué artistas llevas tiempo sin oír.
 

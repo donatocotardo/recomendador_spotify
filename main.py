@@ -25,7 +25,7 @@ SCRIPTS = {
 
 FLUJOS = {
     "playlist": ["descargar", "enriquecer", "genero", "recomendar", "revisar", "playlist"],
-    "album": ["descargar", "album"],
+    "album": ["descargar", "genero", "album"],
 }
 
 

@@ -1,4 +1,5 @@
 import csv
+import json
 import os
 import queue
 import random
@@ -27,6 +28,7 @@ URL = "https://ws.audioscrobbler.com/2.0/"
 RUTA_VISTOS = "data/albumes_vistos.csv"
 PLACEHOLDER_LASTFM = "2a96cbd8b46e442fc41c2b86b821562f"
 MAX_PISTAS = 12
+IDIOMA_ES = ("spanish", "español", "espanol", "latin", "latino", "latina")
 
 BG = "#121212"
 CARD = "#181818"
@@ -40,6 +42,26 @@ FUENTE = "Segoe UI"
 def norm(s):
     s = unicodedata.normalize("NFKD", str(s)).encode("ascii", "ignore").decode().lower()
     return re.sub(r"[^a-z0-9]", "", s)
+
+
+def cargar_filtro():
+    ruta = "data/filtro.json"
+    if not os.path.exists(ruta):
+        return {"generos": [], "espanol": False}
+    with open(ruta, encoding="utf-8") as f:
+        filtro = {"generos": [], "espanol": False}
+        filtro.update(json.load(f))
+        return filtro
+
+
+def cumple_filtro(tags, filtro):
+    etiquetas = [norm(t) for t in tags]
+    generos = [norm(g) for g in filtro["generos"]]
+    if generos and not any(g in etiqueta for g in generos for etiqueta in etiquetas):
+        return False
+    return not filtro["espanol"] or any(
+        idioma in etiqueta for idioma in IDIOMA_ES for etiqueta in etiquetas
+    )
 
 
 def lastfm(metodo, **params):
@@ -123,7 +145,7 @@ def url_portada(imagenes):
     return None
 
 
-def album_de_artista(artista, modo, ocultos, datos, peso):
+def album_de_artista(artista, modo, ocultos, datos, peso, filtro):
     r = lastfm("artist.getTopAlbums", artist=artista, limit=12)
     albumes = r["topalbums"]["album"] if r and "topalbums" in r else []
     guardados = datos["albumes_guardados"].get(norm(artista), set()) if modo == "tuyos" else set()
@@ -160,7 +182,10 @@ def album_de_artista(artista, modo, ocultos, datos, peso):
     tags = tags.get("tag", []) if isinstance(tags, dict) else []
     if isinstance(tags, dict):
         tags = [tags]
-    tags = ", ".join(t["name"] for t in tags[:5])
+    tags = [t["name"] for t in tags if t.get("name")]
+    if not cumple_filtro(tags, filtro):
+        return None
+    tags = ", ".join(tags[:5])
 
     portada = None
     url = url_portada(info.get("image")) or url_portada(al.get("image"))
@@ -195,7 +220,7 @@ def album_de_artista(artista, modo, ocultos, datos, peso):
     }
 
 
-def elegir_album(modo, ocultos, datos):
+def elegir_album(modo, ocultos, datos, filtro):
     artistas = dict(datos[modo])
     if not artistas:
         if modo == "nuevos":
@@ -209,10 +234,11 @@ def elegir_album(modo, ocultos, datos):
         nombres = list(artistas)
         a = random.choices(nombres, weights=[max(artistas[n], 0.1) ** 0.5 for n in nombres])[0]
         peso = artistas.pop(a)
-        album = album_de_artista(a, modo, ocultos, datos, peso)
+        album = album_de_artista(a, modo, ocultos, datos, peso, filtro)
         if album:
             return album
-    raise RuntimeError("No he encontrado álbumes nuevos. Prueba con el otro modo.")
+    raise RuntimeError("No he encontrado álbumes que coincidan con el filtro. "
+                       "Prueba con otro género o sin filtro.")
 
 
 def boton(padre, texto, comando, bg=CHIP, hover="#3E3E3E", fg=TEXTO):
@@ -233,6 +259,7 @@ class App(tk.Tk):
         self.configure(bg=BG)
 
         self.datos = datos
+        self.filtro = cargar_filtro()
         self.modo = "tuyos"
         self.actual = None
         self.ocupado = False
@@ -323,7 +350,7 @@ class App(tk.Tk):
 
     def trabajo(self, modo, ocultos):
         try:
-            self.cola.put(("ok", elegir_album(modo, ocultos, self.datos)))
+            self.cola.put(("ok", elegir_album(modo, ocultos, self.datos, self.filtro)))
         except Exception as e:
             self.cola.put(("error", str(e)))
 
